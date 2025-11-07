@@ -57,6 +57,7 @@ A stunning, interactive website for Nova - The Ultimate Free Roblox Serverside
 
 ## 🌐 Links
 - Discord: [discord.gg/sided](https://discord.gg/sided)
+- Website: [getnova.duckdns.org](getnova.com)
 
 ## 📱 Responsive Design
 Fully responsive and works beautifully on:
@@ -73,3 +74,4 @@ Fully responsive and works beautifully on:
 ---
 
 **Made with 💜 for the Nova community**
+
