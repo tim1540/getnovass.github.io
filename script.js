@@ -1,3 +1,116 @@
+// Mobile Sidebar Toggle
+const hamburger = document.getElementById('hamburger');
+const mobileSidebar = document.getElementById('mobileSidebar');
+const closeSidebar = document.getElementById('closeSidebar');
+const sidebarOverlay = document.getElementById('sidebarOverlay');
+const sidebarLinks = document.querySelectorAll('.sidebar-link');
+const openSettingsBtn = document.getElementById('openSettingsBtn');
+
+function openSidebar() {
+    mobileSidebar.classList.add('active');
+    sidebarOverlay.classList.add('active');
+    hamburger.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeSidebarMenu() {
+    mobileSidebar.classList.remove('active');
+    sidebarOverlay.classList.remove('active');
+    hamburger.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+hamburger.addEventListener('click', () => {
+    const isDesktop = window.innerWidth > 1024;
+    if (isDesktop) {
+        // Toggle collapse on desktop
+        document.body.classList.toggle('sidebar-collapsed');
+    } else {
+        if (mobileSidebar.classList.contains('active')) {
+            closeSidebarMenu();
+        } else {
+            openSidebar();
+        }
+    }
+});
+
+closeSidebar.addEventListener('click', () => {
+    const isDesktop = window.innerWidth > 1024;
+    if (isDesktop) {
+        document.body.classList.add('sidebar-collapsed');
+    } else {
+        closeSidebarMenu();
+    }
+});
+sidebarOverlay.addEventListener('click', closeSidebarMenu);
+
+// Close sidebar when clicking on a link with visual feedback
+sidebarLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+        // Add ripple effect
+        const ripple = document.createElement('span');
+        const rect = link.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        const x = e.clientX - rect.left - size / 2;
+        const y = e.clientY - rect.top - size / 2;
+        
+        ripple.style.cssText = `
+            position: absolute;
+            width: ${size}px;
+            height: ${size}px;
+            left: ${x}px;
+            top: ${y}px;
+            background: rgba(139, 92, 246, 0.5);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: sidebar-ripple 0.6s ease-out;
+            pointer-events: none;
+        `;
+        
+        link.style.position = 'relative';
+        link.style.overflow = 'hidden';
+        link.appendChild(ripple);
+        
+        setTimeout(() => ripple.remove(), 600);
+        
+        // Close sidebar after a short delay for smooth UX
+        setTimeout(() => {
+            closeSidebarMenu();
+        }, 200);
+    });
+});
+
+// Add ripple animation CSS
+const sidebarRippleStyle = document.createElement('style');
+sidebarRippleStyle.textContent = `
+    @keyframes sidebar-ripple {
+        to {
+            transform: scale(2);
+            opacity: 0;
+        }
+    }
+`;
+document.head.appendChild(sidebarRippleStyle);
+
+// Close sidebar on escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && mobileSidebar.classList.contains('active')) {
+        closeSidebarMenu();
+    }
+});
+
+// Settings button near logo opens Settings section
+if (openSettingsBtn) {
+    openSettingsBtn.addEventListener('click', () => {
+        const target = document.querySelector('#settings');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Close sidebar on mobile for better UX
+        if (mobileSidebar.classList.contains('active')) {
+            closeSidebarMenu();
+        }
+    });
+}
+
 // Smooth scrolling for navigation links
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', function (e) {
@@ -12,23 +125,7 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// Add scroll effect to navbar
-const navbar = document.querySelector('.navbar');
-let lastScroll = 0;
-
-window.addEventListener('scroll', () => {
-    const currentScroll = window.pageYOffset;
-    
-    if (currentScroll > 100) {
-        navbar.style.background = 'rgba(10, 10, 15, 0.95)';
-        navbar.style.boxShadow = '0 5px 20px rgba(139, 92, 246, 0.3)';
-    } else {
-        navbar.style.background = 'rgba(10, 10, 15, 0.8)';
-        navbar.style.boxShadow = 'none';
-    }
-    
-    lastScroll = currentScroll;
-});
+// (Removed navbar scroll effect since topbar is replaced by sidebar)
 
 // Intersection Observer for fade-in animations
 const observerOptions = {
@@ -73,11 +170,17 @@ glitchText.addEventListener('mouseenter', () => {
     }, 100);
 });
 
-// Advanced Cursor Trail Effect with Canvas
+// Advanced Cursor Trail Effect with Canvas (Desktop only)
 const canvas = document.getElementById('cursor-trail');
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+const isMobile = window.innerWidth <= 768;
+
+if (!isMobile) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+} else {
+    canvas.style.display = 'none';
+}
 
 window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
@@ -146,20 +249,10 @@ let animated = false;
 
 const animateStats = () => {
     const statsSection = document.querySelector('.stats');
+    if (!statsSection || animated) return;
     const rect = statsSection.getBoundingClientRect();
-    
-    if (rect.top < window.innerHeight && rect.bottom >= 0 && !animated) {
-        animated = true;
-        stats.forEach(stat => {
-            const text = stat.textContent;
-            if (text.includes('K')) {
-                animateNumber(stat, 0, 10, 'K+', 2000);
-            } else if (text.includes('%')) {
-                animateNumber(stat, 0, 99.9, '%', 2000);
-            } else if (text === '24/7') {
-                stat.textContent = '24/7';
-            }
-        });
+    if (rect.top < window.innerHeight && rect.bottom >= 0) {
+        animated = true; // keep current values as-is
     }
 };
 
@@ -592,3 +685,164 @@ console.log('%cJoin us: discord.gg/sided', 'color: #9ca3af; font-size: 12px;');
 console.log('%cDouble-click the NOVA title for a shake!', 'color: #6d28d9; font-size: 12px; font-style: italic;');
 console.log('%cPsst... try typing "NOVA" anywhere on the page 😉', 'color: #a78bfa; font-size: 11px; font-style: italic;');
 console.log('%cClick the code preview to copy it!', 'color: #8b5cf6; font-size: 11px; font-style: italic;');
+
+/* ===== Site Settings, Theme, Cookies, Visits, Command Palette ===== */
+const bodyEl = document.body;
+const themeSwitch = document.getElementById('themeSwitch');
+const perfSwitch = document.getElementById('perfSwitch');
+const cookieSwitch = document.getElementById('cookieSwitch');
+const visitCounterEl = document.getElementById('visitCounter');
+const cookieBanner = document.getElementById('cookieBanner');
+const acceptCookiesBtn = document.getElementById('acceptCookies');
+const declineCookiesBtn = document.getElementById('declineCookies');
+
+function setTheme(theme) {
+  document.body.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  if (themeSwitch) themeSwitch.checked = theme === 'light';
+}
+function setMode(mode) {
+  if (mode === 'performance') {
+    bodyEl.classList.add('performance-mode');
+  } else {
+    bodyEl.classList.remove('performance-mode');
+  }
+  localStorage.setItem('mode', mode);
+  if (perfSwitch) perfSwitch.checked = mode === 'performance';
+}
+function setCookieConsent(consented) {
+  localStorage.setItem('cookieConsent', consented ? 'true' : 'false');
+  if (cookieSwitch) cookieSwitch.checked = !!consented;
+  if (consented) {
+    cookieBanner && (cookieBanner.hidden = true);
+    incrementVisits();
+  } else {
+    // hide banner when explicitly declined
+    cookieBanner && (cookieBanner.hidden = true);
+  }
+  renderVisits();
+}
+function getCookie(name) {
+  try {
+    const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return v ? v.pop() : '';
+  } catch { return ''; }
+}
+function setCookie(name, value, days) {
+  try {
+    const d = new Date();
+    d.setTime(d.getTime() + (days*24*60*60*1000));
+    document.cookie = `${name}=${value}; expires=${d.toUTCString()}; path=/`;
+  } catch {}
+}
+function getVisitCount() {
+  const c = parseInt(getCookie('visits') || '', 10);
+  if (!Number.isNaN(c) && c >= 0) return c;
+  const ls = parseInt(localStorage.getItem('visitsLS') || '', 10);
+  return Number.isNaN(ls) || ls < 0 ? 0 : ls;
+}
+function setVisitCount(v) {
+  setCookie('visits', String(v), 365);
+  localStorage.setItem('visitsLS', String(v));
+}
+function incrementVisits() {
+  const consent = localStorage.getItem('cookieConsent') === 'true';
+  if (!consent) return;
+  const current = getVisitCount();
+  setVisitCount(current + 1);
+}
+function renderVisits() {
+  const consent = localStorage.getItem('cookieConsent') === 'true';
+  if (!visitCounterEl) return;
+  if (!consent) {
+    visitCounterEl.textContent = '';
+    return;
+  }
+  const v = getVisitCount();
+  visitCounterEl.textContent = `Visits: ${v}`;
+}
+function initSettings() {
+  // Theme
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  setTheme(savedTheme);
+  // Mode
+  const savedMode = localStorage.getItem('mode') || 'fancy';
+  setMode(savedMode);
+  // Cookies
+  const consent = localStorage.getItem('cookieConsent');
+  if (consent === null) {
+    cookieBanner && (cookieBanner.hidden = false);
+  } else {
+    setCookieConsent(consent === 'true');
+    if (consent === 'true') incrementVisits();
+  }
+}
+// Wire switches
+if (themeSwitch) {
+  themeSwitch.addEventListener('change', (e) => setTheme(e.target.checked ? 'light' : 'dark'));
+}
+if (perfSwitch) {
+  perfSwitch.addEventListener('change', (e) => setMode(e.target.checked ? 'performance' : 'fancy'));
+}
+if (cookieSwitch) {
+  cookieSwitch.addEventListener('change', (e) => setCookieConsent(!!e.target.checked));
+}
+if (acceptCookiesBtn) acceptCookiesBtn.addEventListener('click', () => setCookieConsent(true));
+if (declineCookiesBtn) declineCookiesBtn.addEventListener('click', () => setCookieConsent(false));
+
+initSettings();
+renderVisits();
+
+// Update visit counter on focus (new sessions/tabs)
+window.addEventListener('focus', renderVisits);
+
+/* ===== Command Palette (Right Alt) ===== */
+const cmdPalette = document.getElementById('cmdPalette');
+const cmdInput = document.getElementById('cmdInput');
+const cmdList = document.getElementById('cmdList');
+const commands = [
+  { label: 'Go to Home', action: () => document.querySelector('#home').scrollIntoView({behavior:'smooth'}) },
+  { label: 'Go to Features', action: () => document.querySelector('#features').scrollIntoView({behavior:'smooth'}) },
+  { label: 'Go to Pricing', action: () => document.querySelector('#pricing').scrollIntoView({behavior:'smooth'}) },
+  { label: 'Go to About', action: () => document.querySelector('#about').scrollIntoView({behavior:'smooth'}) },
+  { label: 'Go to Policy', action: () => document.querySelector('#policy').scrollIntoView({behavior:'smooth'}) },
+  { label: 'Go to Settings', action: () => document.querySelector('#settings').scrollIntoView({behavior:'smooth'}) },
+  { label: 'Toggle Theme', action: () => setTheme(document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark') },
+  { label: 'Toggle Mode', action: () => setMode(bodyEl.classList.contains('performance-mode') ? 'fancy' : 'performance') },
+  { label: 'Open Discord', action: () => window.open('https://discord.gg/sided', '_blank') }
+];
+function openPalette() {
+  cmdPalette.hidden = false;
+  cmdInput.value = '';
+  renderCmdList(commands);
+  setTimeout(() => cmdInput.focus(), 0);
+}
+function closePalette() { cmdPalette.hidden = true; }
+function renderCmdList(items) {
+  cmdList.innerHTML = '';
+  items.forEach((c, i) => {
+    const li = document.createElement('li');
+    li.textContent = c.label;
+    li.setAttribute('role','option');
+    li.addEventListener('click', () => { c.action(); closePalette(); });
+    if (i === 0) li.setAttribute('aria-selected','true');
+    cmdList.appendChild(li);
+  });
+}
+cmdInput && cmdInput.addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  const filtered = commands.filter(c => c.label.toLowerCase().includes(q));
+  renderCmdList(filtered.length ? filtered : [{label:'No results', action: ()=>{}}]);
+});
+window.addEventListener('keydown', (e) => {
+  const active = document.activeElement;
+  const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+  // Open with Right Alt only (AltRight), not while typing
+  if (!isTyping && e.altKey && e.code === 'AltRight') {
+    e.preventDefault();
+    openPalette();
+  } else if (e.key === 'Escape' && !cmdPalette.hidden) {
+    closePalette();
+  }
+});
+cmdPalette && cmdPalette.addEventListener('click', (e) => { if (e.target === cmdPalette) closePalette(); });
