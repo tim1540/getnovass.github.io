@@ -132,8 +132,21 @@ function isFancy() { return !bodyEl.classList.contains('performance-mode'); }
 let scrollObserver = null;
 
 function setupScrollAnimations() {
-    const elements = Array.from(document.querySelectorAll('.feature-card, .pricing-card, .about .code-preview'));
-    // Clean previous
+    // Add more elements for smooth text/blocks appearance
+    const selector = [
+        '.section-title',
+        '.feature-card',
+        '.feature-card p',
+        '.pricing-card',
+        '.pricing-card .plan-description',
+        '.about .code-preview',
+        '.about .about-text p',
+        '.policy .policy-card',
+        '.policy .policy-section li'
+    ].join(', ');
+    const elements = Array.from(document.querySelectorAll(selector));
+
+    // Clean previous observer
     if (scrollObserver) { try { scrollObserver.disconnect(); } catch(e){} }
 
     if (!elements.length) return;
@@ -155,13 +168,27 @@ function setupScrollAnimations() {
                 scrollObserver.unobserve(entry.target);
             }
         });
-    }, { threshold: 0.1, rootMargin: '0px 0px -100px 0px' });
+    }, { threshold: 0.12, rootMargin: '0px 0px -80px 0px' });
 
     elements.forEach((el, index) => {
         el.style.opacity = '0';
-        el.style.transform = 'translateY(40px)';
-        el.style.transition = `opacity .6s ease ${index * 0.06}s, transform .6s ease ${index * 0.06}s`;
+        el.style.transform = 'translateY(22px)';
+        el.style.transition = `opacity .5s ease ${index * 0.04}s, transform .5s ease ${index * 0.04}s`;
         scrollObserver.observe(el);
+    });
+
+    // Immediately reveal items already in viewport (avoid missing content at load)
+    const inView = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.top < window.innerHeight - 20 && r.bottom > 0;
+    };
+    requestAnimationFrame(() => {
+        elements.forEach(el => {
+            if (inView(el)) {
+                el.style.opacity = '1';
+                el.style.transform = 'translateY(0)';
+            }
+        });
     });
 }
 
@@ -205,6 +232,11 @@ function animateStat(el) {
         const val = parseFloat(text.replace(/%/,'')) || 0;
         target = val;
         format = (v)=> v.toFixed(1) + '%';
+        runCounter(0, target, 1200, v=> el.textContent = format(v));
+    } else if (/^[\d,]+$/.test(text)) {
+        const val = parseInt(text.replace(/,/g,''), 10) || 0;
+        target = val;
+        format = (v)=> Math.floor(v).toLocaleString();
         runCounter(0, target, 1200, v=> el.textContent = format(v));
     }
 }
@@ -452,13 +484,6 @@ document.querySelectorAll('.pricing-card').forEach(card => {
     });
 });
 
-// Animate pricing cards on scroll
-document.querySelectorAll('.pricing-card').forEach((card, index) => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(50px)';
-    card.style.transition = `all 0.8s ease ${index * 0.2}s`;
-    observer.observe(card);
-});
 
 // Parallax Effect on Scroll
 let ticking = false;
