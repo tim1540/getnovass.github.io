@@ -7,6 +7,8 @@ const sidebarLinks = document.querySelectorAll('.sidebar-link');
 const openSettingsBtn = document.getElementById('openSettingsBtn');
 
 function openSidebar() {
+    // Ensure desktop-collapsed state doesn't block mobile opening
+    document.body.classList.remove('sidebar-collapsed');
     mobileSidebar.classList.add('active');
     sidebarOverlay.classList.add('active');
     hamburger.classList.add('active');
@@ -288,6 +290,10 @@ if (!isMobile) {
 window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    // If moving to mobile width, remove desktop-collapsed class so mobile menu can slide in
+    if (window.innerWidth <= 1024) {
+        document.body.classList.remove('sidebar-collapsed');
+    }
 });
 
 const particles = [];
