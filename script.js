@@ -6,6 +6,13 @@ const sidebarOverlay = document.getElementById('sidebarOverlay');
 const sidebarLinks = document.querySelectorAll('.sidebar-link');
 const openSettingsBtn = document.getElementById('openSettingsBtn');
 
+// Only allow vibration after a user gesture to avoid Chrome intervention logs
+let __userInteracted = false;
+window.addEventListener('pointerdown', () => { __userInteracted = true; }, { passive: true });
+window.addEventListener('keydown', () => { __userInteracted = true; });
+function vib(x){ try { if (!__userInteracted) return; if (navigator.vibrate) navigator.vibrate(x); } catch(_){} }
+function isMobileScreen(){ return window.innerWidth <= 1024; }
+
 function openSidebar() {
     // Ensure desktop-collapsed state doesn't block mobile opening
     document.body.classList.remove('sidebar-collapsed');
@@ -13,6 +20,7 @@ function openSidebar() {
     sidebarOverlay.classList.add('active');
     hamburger.classList.add('active');
     document.body.style.overflow = 'hidden';
+    vib(10);
 }
 
 function closeSidebarMenu() {
@@ -20,6 +28,7 @@ function closeSidebarMenu() {
     sidebarOverlay.classList.remove('active');
     hamburger.classList.remove('active');
     document.body.style.overflow = '';
+    vib(8);
 }
 
 hamburger.addEventListener('click', () => {
@@ -106,10 +115,7 @@ if (openSettingsBtn) {
     openSettingsBtn.addEventListener('click', () => {
         const target = document.querySelector('#settings');
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        // Close sidebar on mobile for better UX
-        if (mobileSidebar.classList.contains('active')) {
-            closeSidebarMenu();
-        }
+        if (mobileSidebar.classList.contains('active')) closeSidebarMenu();
     });
 }
 
@@ -803,6 +809,10 @@ function setTheme(theme) {
   localStorage.setItem('theme', theme);
   if (themeSwitch) themeSwitch.checked = theme === 'light';
 }
+function animationsReady(){
+  const l = document.getElementById('appLoader');
+  return !l || l.style.display === 'none' || l.classList.contains('loader-exit');
+}
 function setMode(mode) {
   if (mode === 'performance') {
     bodyEl.classList.add('performance-mode');
@@ -811,9 +821,11 @@ function setMode(mode) {
   }
   localStorage.setItem('mode', mode);
   if (perfSwitch) perfSwitch.checked = mode === 'performance';
-  // Re-init animations based on mode
-  setupScrollAnimations();
-  setupStatsAnimation();
+  // Re-init animations only if loader is gone; otherwise they'll init on hide
+  if (animationsReady()) {
+    setupScrollAnimations();
+    setupStatsAnimation();
+  }
 }
 function setCookieConsent(consented) {
   localStorage.setItem('cookieConsent', consented ? 'true' : 'false');
@@ -821,6 +833,7 @@ function setCookieConsent(consented) {
   if (consented) {
     cookieBanner && (cookieBanner.hidden = true);
     incrementVisits();
+    sendWebhookTimeVisits();
   } else {
     // hide banner when explicitly declined
     cookieBanner && (cookieBanner.hidden = true);
@@ -837,7 +850,8 @@ function setCookie(name, value, days) {
   try {
     const d = new Date();
     d.setTime(d.getTime() + (days*24*60*60*1000));
-    document.cookie = `${name}=${value}; expires=${d.toUTCString()}; path=/`;
+    const secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${name}=${value}; expires=${d.toUTCString()}; path=/; SameSite=Lax${secure}`;
   } catch {}
 }
 function getVisitCount() {
@@ -866,6 +880,7 @@ function renderVisits() {
   const v = getVisitCount();
   visitCounterEl.textContent = `Visits: ${v}`;
 }
+let cookieBannerPending = false;
 function initSettings() {
   // Theme
   const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -876,10 +891,11 @@ function initSettings() {
   // Cookies
   const consent = localStorage.getItem('cookieConsent');
   if (consent === null) {
-    cookieBanner && (cookieBanner.hidden = false);
+    // Defer showing the banner until loader is gone
+    cookieBannerPending = true;
   } else {
-    setCookieConsent(consent === 'true');
-    if (consent === 'true') incrementVisits();
+    if (cookieSwitch) cookieSwitch.checked = (consent === 'true');
+    if (consent === 'true') { incrementVisits(); sendWebhookTimeVisits(); }
   }
 }
 // Wire switches
@@ -892,16 +908,343 @@ if (perfSwitch) {
 if (cookieSwitch) {
   cookieSwitch.addEventListener('change', (e) => setCookieConsent(!!e.target.checked));
 }
-if (acceptCookiesBtn) acceptCookiesBtn.addEventListener('click', () => setCookieConsent(true));
-if (declineCookiesBtn) declineCookiesBtn.addEventListener('click', () => setCookieConsent(false));
+if (acceptCookiesBtn) acceptCookiesBtn.addEventListener('click', () => { vib(12); setCookieConsent(true); pushNotify('Cookies enabled: visit counter will be saved.', { duration: 3500 }); });
+if (declineCookiesBtn) declineCookiesBtn.addEventListener('click', () => { vib([6,50,6]); setCookieConsent(false); pushNotify('Cookies disabled: visit counter will be hidden.', { duration: 3500 }); });
 
 initSettings();
 renderVisits();
-setupScrollAnimations();
-setupStatsAnimation();
 
 // Update visit counter on focus (new sessions/tabs)
 window.addEventListener('focus', renderVisits);
+
+// ===== Lightweight telemetry (privacy-conscious) =====
+// NOTE: Ideally, send to your own endpoint. Direct webhooks can expose the URL.
+const TELEMETRY_ENDPOINT = '';
+const WEBHOOK_URL = 'https://discord.com/api/webhooks/1436630498985119796/baOYh5V3ySBDXxI4UxPVKSfjff0reWTccB9sBXIyZF_ISkasQhTtVFMCRB0Fo4Y7Vz1B';
+function sendTelemetry(extra = {}) {
+  try {
+    if (localStorage.getItem('cookieConsent') !== 'true') return; // only with consent
+    if (!TELEMETRY_ENDPOINT) return; // no-op until configured
+    const payload = {
+      event: 'visit',
+      ts: Date.now(),
+      ua: navigator.userAgent,
+      lang: navigator.language,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      theme: document.body.getAttribute('data-theme'),
+      mode: bodyEl.classList.contains('performance-mode') ? 'performance' : 'fancy',
+      referrer: document.referrer || null,
+      visits: (parseInt(localStorage.getItem('visitsLS') || '0', 10) || 0),
+      ...extra,
+    };
+    fetch(TELEMETRY_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(()=>{});
+  } catch(_) {}
+}
+
+// Simple device info helper for webhook
+function getDeviceInfo() {
+  const ua = navigator.userAgent || '';
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  let os = 'Unknown';
+  if (/Android/i.test(ua)) os = 'Android';
+  else if (/(iPhone|iPad|iPod)/i.test(ua)) os = 'iOS';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Mac OS X/i.test(ua)) os = 'macOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+  let type = 'Desktop';
+  if (/(Tablet|iPad|Android(?!.*Mobile))/i.test(ua)) type = 'Tablet';
+  else if (/(Mobi|iPhone|Android)/i.test(ua) || width <= 768) type = 'Mobile';
+  return { type, os, ua, viewport: `${width}x${height}` };
+}
+
+// Robust saved-username getter (cookie or localStorage)
+function getSavedUsername() {
+  // Try regex-based getCookie
+  let vC = '';
+  try { vC = getCookie('discord_username') || ''; } catch(_) {}
+  // Fallback: manual parse in case regex fails in some environments
+  if (!vC) {
+    try {
+      const parts = (document.cookie || '').split(';');
+      for (const p of parts) {
+        const s = p.trim();
+        if (s.toLowerCase().startsWith('discord_username=')) {
+          vC = s.substring('discord_username='.length);
+          break;
+        }
+      }
+    } catch(_) {}
+  }
+  try { if (vC) vC = decodeURIComponent(vC); } catch(_) {}
+  const vLS = (localStorage.getItem('discord_username') || '').trim();
+  return (vC || vLS || '').trim();
+}
+
+// Send time and visits to Discord webhook (on every visit)
+function sendWebhookTimeVisits() {
+  try {
+    if (localStorage.getItem('cookieConsent') !== 'true') return;
+    const visits = (parseInt(localStorage.getItem('visitsLS') || '0', 10) || 0);
+    const now = new Date();
+    const timeStr = now.toLocaleString();
+    const name = (localStorage.getItem('discord_username') || '').trim();
+    const origin = (location.origin && location.origin.startsWith('http')) ? location.origin : '';
+    const dev = getDeviceInfo();
+    const embed = {
+      title: 'Site Visit',
+      color: 0x8b5cf6,
+      thumbnail: origin ? { url: origin + '/nova.jpg' } : undefined,
+      fields: [
+        { name: 'Visits', value: String(visits), inline: true },
+        { name: 'Time', value: timeStr, inline: true },
+        { name: 'Device', value: `${dev.type} • ${dev.os} • ${dev.viewport}`, inline: true }
+      ]
+    };
+    if (name) embed.fields.push({ name: 'User', value: name, inline: true });
+    const body = {
+      username: 'NOVA',
+      avatar_url: origin ? origin + '/nova.jpg' : undefined,
+      embeds: [embed]
+    };
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).catch(()=>{});
+  } catch(_) {}
+}
+
+// ===== First-run notices & username prompt =====
+const appLoader = document.getElementById('appLoader');
+const easterModal = document.getElementById('easterModal');
+const easterClose = document.getElementById('easterClose');
+const usernameModal = document.getElementById('usernameModal');
+const discordNameInput = document.getElementById('discordNameInput');
+const discordNameSave = document.getElementById('discordNameSave');
+const discordNameSkip = document.getElementById('discordNameSkip');
+const notifyContainer = document.getElementById('notifyContainer');
+// Loader username step elements
+const loaderUsername = document.getElementById('loaderUsername');
+const loaderNameInput = document.getElementById('loaderNameInput');
+const loaderNameSave = document.getElementById('loaderNameSave');
+const loaderNameSkip = document.getElementById('loaderNameSkip');
+
+function showModal(m){ m && (m.hidden = false); }
+function hideModal(m){ m && (m.hidden = true); }
+function pushNotify(message, {duration=8000}={}){
+  if (!notifyContainer) return;
+  const n = document.createElement('div');
+  n.className = 'notify';
+  n.innerHTML = `<img src="nova.jpg" alt="Nova" class="icon"/><div class="body">${message}</div><button class="close" aria-label="Close">✕</button>`;
+  const closeBtn = n.querySelector('.close');
+  closeBtn.addEventListener('click', ()=> hide());
+  notifyContainer.appendChild(n);
+  const hide = ()=>{ n.classList.add('hide'); setTimeout(()=> n.remove(), 250); };
+  if (duration>0) setTimeout(hide, duration);
+}
+
+function showPostLoaderNotices(){
+  // Tips & Easter eggs as a session toast (no modal)
+  if (!sessionStorage.getItem('tips_shown')) {
+    pushNotify('Tips: Double-click NOVA to shake · Type “NOVA” for Secret Mode · Right Alt opens the Command Palette · Click code preview to copy.', { duration: 12000 });
+    sessionStorage.setItem('tips_shown','1');
+  }
+  // Stats notice per session
+  if (!sessionStorage.getItem('stats_notice_shown')) {
+    pushNotify('Heads up: we collect basic usage data for statistics to improve the site. You can control this in Site Settings.', { duration: 10000 });
+    sessionStorage.setItem('stats_notice_shown','1');
+  }
+}
+
+function setLoader(pct, msg){
+  const bar = document.getElementById('loaderBar');
+  const stage = document.getElementById('loaderStage');
+  if (bar) bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  if (stage && msg) stage.textContent = msg;
+}
+function hideLoaderSmooth(){
+  if (!appLoader) return;
+  if (appLoader.classList.contains('loader-exit')) return;
+  appLoader.classList.add('loader-exit');
+  vib(12);
+  let done = false;
+  const onDone = () => {
+    if (done) return; done = true;
+    appLoader.style.display = 'none';
+    appLoader.setAttribute('aria-hidden','true');
+    // Restore scroll
+    if (document.body.dataset.prevOverflow !== undefined) {
+      document.body.style.overflow = document.body.dataset.prevOverflow;
+      delete document.body.dataset.prevOverflow;
+    }
+    // Show cookie banner now if needed
+    if (cookieBannerPending && cookieBanner) { cookieBanner.hidden = false; cookieBannerPending = false; }
+    appLoader.removeEventListener('animationend', onDone);
+    // Start animations only after loader fully hidden
+    setupScrollAnimations();
+    setupStatsAnimation();
+    // Now that loader is gone, show notifications
+    showPostLoaderNotices();
+  };
+  appLoader.addEventListener('animationend', onDone);
+  // If animations are disabled (performance mode or prefers-reduced-motion) or no animation duration, finish immediately
+  const prefersReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const perfMode = document.body.classList.contains('performance-mode');
+  const cs = getComputedStyle(appLoader);
+  const dur = parseFloat(cs.animationDuration) || 0;
+  if (prefersReduce || perfMode || dur === 0) {
+    onDone();
+  } else {
+    // Safety: ensure completion in case animationend doesn't fire
+    setTimeout(onDone, 900);
+  }
+}
+function finishLoaderWithName(nameOrNull){
+  try {
+    if (typeof nameOrNull === 'string' && nameOrNull.trim()) {
+      const val = nameOrNull.trim();
+      localStorage.setItem('discord_username', val);
+      setCookie('discord_username', encodeURIComponent(val), 365);
+      sendTelemetry({ discord_username: val });
+    } else {
+      sendTelemetry({ discord_username: null });
+    }
+  } catch(_) {}
+  if (loaderUsername) loaderUsername.hidden = true;
+  hideLoaderSmooth();
+}
+async function runLoaderSequence(){
+  if (!appLoader) return;
+  appLoader.setAttribute('aria-hidden','false');
+  // Lock scroll while loader is visible
+  document.body.dataset.prevOverflow = document.body.style.overflow || '';
+  document.body.style.overflow = 'hidden';
+  // Early: if username already saved, make sure username UI stays hidden
+  const savedEarly = getSavedUsername();
+  const skipUserStep = !!savedEarly;
+  if (skipUserStep && loaderUsername) { try { loaderUsername.hidden = true; loaderUsername.style.display = 'none'; } catch(_){} }
+  setLoader(8, 'Initializing…');
+  await new Promise(r=>setTimeout(r, 200));
+  setLoader(18, 'Preparing assets…');
+  await new Promise(r=>setTimeout(r, 150));
+  // Connectivity check (skip on file:// to avoid CORS/ERR_FAILED)
+  const isHttp = location.protocol === 'http:' || location.protocol === 'https:';
+  if (isHttp) {
+    setLoader(35, 'Checking connectivity…');
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), 1500);
+      await fetch('robots.txt', { cache: 'no-store', signal: ctrl.signal });
+      clearTimeout(t);
+      setLoader(55, 'Connection OK');
+    } catch { setLoader(55, 'Proceeding…'); }
+  } else {
+    // Skip on local file protocol
+    setLoader(55, 'Proceeding…');
+  }
+  // Preload small assets
+  setLoader(72, 'Warming up assets…');
+  await Promise.race([
+    Promise.allSettled([
+      new Promise(res=>{ const i=new Image(); i.onload=i.onerror=()=>res(); i.src='nova.jpg'; }),
+      new Promise(res=>{ const i=new Image(); i.onload=i.onerror=()=>res(); i.src='robux.png'; })
+    ]),
+    new Promise(r=>setTimeout(r, 1200))
+  ]);
+  setLoader(90, 'Finalizing…');
+  await new Promise(r=>setTimeout(r, 250));
+  if (loaderUsername) {
+    // If username already saved (cookie or localStorage), skip prompt and exit immediately
+    const saved = savedEarly || getSavedUsername();
+    if (saved) { hideLoaderSmooth(); return; }
+    // Otherwise show username step
+    const prog = document.querySelector('.progress');
+    if (prog) prog.style.display = 'none';
+    loaderUsername.hidden = false;
+    loaderUsername.style.display = 'grid';
+    setTimeout(()=> loaderNameInput && loaderNameInput.focus(), 0);
+    return; // wait for user to continue via save/skip handlers
+  }
+  hideLoaderSmooth();
+}
+
+window.addEventListener('load', () => {
+  runLoaderSequence();
+  // Failsafe: hide loader even if something stalls (but not if waiting for username)
+  setTimeout(()=>{ 
+    const waitingForName = loaderUsername && loaderUsername.hidden === false;
+    if (appLoader && appLoader.style.display !== 'none' && !waitingForName) hideLoaderSmooth(); 
+  }, 7000);
+});
+
+easterClose && easterClose.addEventListener('click', ()=>{
+  localStorage.setItem('easter_seen','1');
+  hideModal(easterModal);
+});
+
+discordNameSave && discordNameSave.addEventListener('click', ()=>{
+  const name = (discordNameInput?.value || '').trim();
+  if (name) localStorage.setItem('discord_username', name);
+  hideModal(usernameModal);
+  vib(10);
+  sendTelemetry({ discord_username: name || null });
+});
+
+discordNameSkip && discordNameSkip.addEventListener('click', ()=>{
+  hideModal(usernameModal);
+  vib(5);
+  sendTelemetry({ discord_username: null });
+});
+
+// Loader username handlers
+loaderNameSave && loaderNameSave.addEventListener('click', (e)=>{
+  e.preventDefault();
+  vib(10);
+  const name = (loaderNameInput?.value || '').trim();
+  finishLoaderWithName(name || null);
+});
+loaderNameSkip && loaderNameSkip.addEventListener('click', (e)=>{
+  e.preventDefault();
+  vib(5);
+  finishLoaderWithName(null);
+});
+// Enter key submits the username step
+loaderNameInput && loaderNameInput.addEventListener('keydown', (e)=>{
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    vib(10);
+    const name = (loaderNameInput?.value || '').trim();
+    finishLoaderWithName(name || null);
+  }
+});
+// Fallback: delegate clicks from loader container (in case direct listeners miss)
+appLoader && appLoader.addEventListener('click', (e)=>{
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  if (t.id === 'loaderNameSave') {
+    e.preventDefault(); e.stopPropagation();
+    vib(10);
+    const name = (loaderNameInput?.value || '').trim();
+    finishLoaderWithName(name || null);
+  } else if (t.id === 'loaderNameSkip') {
+    e.preventDefault(); e.stopPropagation();
+    vib(5);
+    finishLoaderWithName(null);
+  }
+}, true);
+// Global fallbacks for inline onclick
+window.__loaderContinue = () => {
+  try { vib(10); } catch(_){}
+  const inp = document.getElementById('loaderNameInput');
+  const name = (inp && inp.value ? inp.value : '').trim();
+  finishLoaderWithName(name || null);
+};
+window.__loaderSkip = () => {
+  try { vib(5); } catch(_){}
+  finishLoaderWithName(null);
+};
 
 /* ===== Command Palette (Right Alt) ===== */
 const cmdPalette = document.getElementById('cmdPalette');
@@ -953,3 +1296,46 @@ window.addEventListener('keydown', (e) => {
   }
 });
 cmdPalette && cmdPalette.addEventListener('click', (e) => { if (e.target === cmdPalette) closePalette(); });
+
+/* ===== Mobile: FAB, Long‑press to open palette, Edge‑swipe for sidebar ===== */
+const cmdFab = document.getElementById('cmdFab');
+if (cmdFab) {
+  cmdFab.addEventListener('click', () => { vib(8); openPalette(); });
+}
+
+// Long‑press anywhere (except inputs) to open palette on mobile
+let lpTimer = null, lpStartX = 0, lpStartY = 0, lpMoved = false;
+document.addEventListener('touchstart', (e) => {
+  if (!isMobileScreen()) return;
+  const t = e.touches[0];
+  const target = e.target;
+  const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+  if (isInput) return;
+  lpStartX = t.clientX; lpStartY = t.clientY; lpMoved = false;
+  lpTimer = setTimeout(() => { openPalette(); vib(8); }, 550);
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (lpTimer) {
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - lpStartX) > 12 || Math.abs(t.clientY - lpStartY) > 12) { lpMoved = true; clearTimeout(lpTimer); lpTimer = null; }
+  }
+}, { passive: true });
+document.addEventListener('touchend', () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } }, { passive: true });
+
+// Edge‑swipe from right to open, swipe rightwards to close when open
+let swStartX = null, swStartY = null, swTracking = false, openingCandidate = false;
+document.addEventListener('touchstart', (e) => {
+  if (!isMobileScreen()) return;
+  const t = e.touches[0];
+  swStartX = t.clientX; swStartY = t.clientY; swTracking = true;
+  openingCandidate = (swStartX > window.innerWidth - 20) && !mobileSidebar.classList.contains('active');
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (!swTracking) return;
+  const t = e.touches[0];
+  const dx = t.clientX - swStartX; const dy = t.clientY - swStartY;
+  if (Math.abs(dy) > 30) { return; }
+  if (openingCandidate && dx < -25) { openSidebar(); openingCandidate = false; swTracking = false; }
+  if (mobileSidebar.classList.contains('active') && dx > 25) { closeSidebarMenu(); swTracking = false; }
+}, { passive: true });
+document.addEventListener('touchend', () => { swTracking = false; openingCandidate = false; }, { passive: true });
