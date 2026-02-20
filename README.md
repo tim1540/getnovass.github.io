@@ -8,7 +8,7 @@ Nova Serverside team made their original website, this website is deprecated and
 ## 🌐 Links
 - Original Website: [nova.gg](https://serverside.gg)
 - Discord: [discord.gg/sided](https://discord.gg/sided)
-- Website: [getnova.com](https://discord.gg/sided)
+- Fanmade Website: [getnova.com](https://getnova.duckdns.org)
 
 ## 📱 Responsive Design
 Fully responsive and works beautifully on:
@@ -25,5 +25,6 @@ Fully responsive and works beautifully on:
 ---
 
 **Made with 💜 for the Nova community**
+
 
 
