@@ -2,6 +2,9 @@
 
 A stunning, interactive website for Nova - The Ultimate Free Roblox Serverside
 
+## ⚠️ Warning
+Nova Serverside team made their original website, this website is deprecated and won't be updated any more because it was made casually not by Nova SS team. Link to original website is in links section.
+
 ## 🌐 Links
 - Discord: [discord.gg/sided](https://discord.gg/sided)
 - Website: [getnova.com](https://discord.gg/sided)
@@ -21,3 +24,4 @@ Fully responsive and works beautifully on:
 ---
 
 **Made with 💜 for the Nova community**
+
